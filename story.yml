@@ -1,0 +1,66 @@
+package kr.rpg;
+
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.*;
+
+public class DataManager {
+    private final RpgPlugin pl;
+    private final File dir;
+    private final Map<UUID, PlayerData> map = new HashMap<>();
+
+    public DataManager(RpgPlugin pl) {
+        this.pl = pl;
+        this.dir = new File(pl.getDataFolder(), "players");
+        dir.mkdirs();
+    }
+
+    public PlayerData get(Player p) {
+        return map.computeIfAbsent(p.getUniqueId(), this::load);
+    }
+
+    private PlayerData load(UUID id) {
+        PlayerData d = new PlayerData();
+        File f = new File(dir, id + ".yml");
+        if (!f.exists()) return d;
+        YamlConfiguration c = YamlConfiguration.loadConfiguration(f);
+        d.level = c.getInt("level", 1);
+        d.exp = c.getLong("exp", 0);
+        d.points = c.getInt("points", 0);
+        d.chapter = c.getInt("chapter", 0);
+        d.progress = c.getInt("progress", 0);
+        d.active = c.getBoolean("active", false);
+        for (int i = 0; i < 5; i++) d.st[i] = c.getInt("st." + i, 0);
+        return d;
+    }
+
+    public void save(UUID id) {
+        PlayerData d = map.get(id);
+        if (d == null) return;
+        YamlConfiguration c = new YamlConfiguration();
+        c.set("level", d.level);
+        c.set("exp", d.exp);
+        c.set("points", d.points);
+        c.set("chapter", d.chapter);
+        c.set("progress", d.progress);
+        c.set("active", d.active);
+        for (int i = 0; i < 5; i++) c.set("st." + i, d.st[i]);
+        try {
+            c.save(new File(dir, id + ".yml"));
+        } catch (IOException e) {
+            pl.getLogger().warning("저장 실패: " + id + " - " + e.getMessage());
+        }
+    }
+
+    public void unload(UUID id) {
+        save(id);
+        map.remove(id);
+    }
+
+    public void saveAll() {
+        for (UUID id : new ArrayList<>(map.keySet())) save(id);
+    }
+}

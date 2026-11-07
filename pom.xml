@@ -1,0 +1,64 @@
+package kr.rpg;
+
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
+import org.bukkit.Sound;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.entity.Player;
+
+public final class Stats {
+    private Stats() {}
+
+    // 1.21 초기/후기 버전의 속성 이름 차이를 모두 처리
+    public static final Attribute MAX_HP = find("max_health", "generic.max_health");
+    public static final Attribute SPEED = find("movement_speed", "generic.movement_speed");
+
+    private static Attribute find(String... keys) {
+        for (String k : keys) {
+            Attribute a = Registry.ATTRIBUTE.get(NamespacedKey.minecraft(k));
+            if (a != null) return a;
+        }
+        return null;
+    }
+
+    public static void bar(Player p, String msg) {
+        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(msg));
+    }
+
+    /** 스탯을 실제 능력치(체력, 이동속도)에 반영 */
+    public static void apply(Player p, PlayerData d) {
+        AttributeInstance hp = p.getAttribute(MAX_HP);
+        if (hp != null) hp.setBaseValue(20 + d.st[PlayerData.VIT] * 2);
+        AttributeInstance sp = p.getAttribute(SPEED);
+        if (sp != null) sp.setBaseValue(0.1 * (1 + Math.min(0.5, d.st[PlayerData.DEX] * 0.005)));
+    }
+
+    /** 경험치 지급. bonus=true면 지능 보너스 적용 */
+    public static void giveExp(Player p, long amount, boolean bonus) {
+        PlayerData d = RpgPlugin.inst.data.get(p);
+        long gain = amount;
+        if (bonus) gain = Math.max(1, Math.round(amount * (1 + d.st[PlayerData.INT] * 0.01)));
+        d.exp += gain;
+        boolean up = false;
+        while (d.exp >= d.need()) {
+            d.exp -= d.need();
+            d.level++;
+            d.points += 3;
+            up = true;
+        }
+        if (up) {
+            apply(p, d);
+            AttributeInstance hp = p.getAttribute(MAX_HP);
+            if (hp != null) p.setHealth(hp.getValue());
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+            p.sendTitle("§6§lLEVEL UP!", "§fLv." + d.level + "  §7(스탯 포인트 +3)", 10, 60, 20);
+            p.sendMessage("§6[레벨업] §fLv." + d.level + " 달성! §e/스탯§f 에서 포인트 §a" + d.points + "§f개를 나눠 보세요.");
+            RpgPlugin.inst.story.checkLevel(p);
+        } else {
+            bar(p, "§e+" + gain + " EXP §7(" + d.exp + " / " + d.need() + ")");
+        }
+    }
+}

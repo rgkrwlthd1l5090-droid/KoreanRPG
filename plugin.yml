@@ -1,0 +1,97 @@
+package kr.rpg;
+
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.entity.Player;
+import org.bukkit.entity.Villager;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.File;
+
+public class RpgPlugin extends JavaPlugin implements CommandExecutor {
+    public static RpgPlugin inst;
+    public DataManager data;
+    public Story story;
+    public Enhance enhance;
+    public Gui gui;
+    public NamespacedKey guideKey, enhKey, stoneKey;
+
+    @Override
+    public void onEnable() {
+        inst = this;
+        getDataFolder().mkdirs();
+        if (!new File(getDataFolder(), "story.yml").exists()) saveResource("story.yml", false);
+
+        guideKey = new NamespacedKey(this, "guide");
+        enhKey = new NamespacedKey(this, "enh");
+        stoneKey = new NamespacedKey(this, "stone");
+
+        data = new DataManager(this);
+        enhance = new Enhance(this);
+        story = new Story(this);
+        gui = new Gui(this);
+
+        getServer().getPluginManager().registerEvents(new Events(this), this);
+        for (String name : getDescription().getCommands().keySet()) {
+            PluginCommand c = getCommand(name);
+            if (c != null) c.setExecutor(this);
+        }
+        for (Player p : Bukkit.getOnlinePlayers()) Stats.apply(p, data.get(p));
+        Bukkit.getScheduler().runTaskTimer(this, () -> data.saveAll(), 6000L, 6000L); // 5분마다 자동 저장
+        getLogger().info("KoreanRPG 활성화!");
+    }
+
+    @Override
+    public void onDisable() {
+        if (data != null) data.saveAll();
+    }
+
+    @Override
+    public boolean onCommand(CommandSender s, Command c, String label, String[] a) {
+        if (!(s instanceof Player p)) {
+            s.sendMessage("게임 안에서만 사용할 수 있어요.");
+            return true;
+        }
+        PlayerData d = data.get(p);
+        switch (c.getName()) {
+            case "스탯" -> gui.openStats(p);
+            case "레벨" -> p.sendMessage("§6Lv." + d.level + " §7| 경험치 §f" + d.exp + " / " + d.need()
+                    + " §7| 스탯 포인트 §a" + d.points);
+            case "강화" -> enhance.tryEnhance(p);
+            case "퀘스트" -> story.showCurrent(p);
+            case "길라잡이" -> gui.openGuide(p);
+            case "길라잡이소환" -> {
+                spawnGuide(p.getLocation());
+                p.sendMessage("§a길라잡이 루미를 소환했습니다.");
+            }
+            case "강화석지급" -> {
+                int n = 1;
+                try { if (a.length > 0) n = Math.max(1, Math.min(64, Integer.parseInt(a[0]))); } catch (NumberFormatException ignored) { }
+                story.giveStones(p, n);
+                p.sendMessage("§d강화석 " + n + "개를 받았습니다.");
+            }
+            default -> { }
+        }
+        return true;
+    }
+
+    private void spawnGuide(Location loc) {
+        loc.getWorld().spawn(loc, Villager.class, v -> {
+            v.setCustomName("§a✦ 길라잡이 루미");
+            v.setCustomNameVisible(true);
+            v.setProfession(Villager.Profession.LIBRARIAN);
+            v.setAI(false);
+            v.setInvulnerable(true);
+            v.setSilent(true);
+            v.setPersistent(true);
+            v.setRemoveWhenFarAway(false);
+            v.getPersistentDataContainer().set(guideKey, PersistentDataType.BYTE, (byte) 1);
+        });
+    }
+}
